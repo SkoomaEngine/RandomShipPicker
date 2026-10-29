@@ -1,0 +1,138 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Random Ship Picker 1.0.0
+
+  Adds a "Random" button to the port's carousel filter row. A click selects a
+  ship drawn uniformly at random from the ships that match the game's own
+  carousel filters, then makes the carousel scroll to it.
+
+  How it works (measured in game with a diagnostic probe, client 15.9.0):
+  - With filtered-out ships hidden, the game keeps 'filtered.sorted' up to
+    date, so we draw from it. With them only dimmed, that list goes stale,
+    but 'sorted' lists the matching ships first, so we draw from that prefix.
+  - Selecting a ship does not scroll the carousel, but changing the "hide
+    filtered-out ships" setting does. So once the new ship is selected we flip
+    that setting and, 0.15 s later, put the user's value back.
+
+  Only the game's own filters count; filters added by other mods inside the
+  carousel are not visible here.
+-->
+<mod name="RSP_RandomShipPicker" version="1.0.0">
+	<requires installer=">=1.0.0"/>
+
+	<ubBuildBlock name="ShipsCarouselPanel">
+		<!-- The port carousel panel renders its own inline copy of the filter row. -->
+		<insert into=".//block[@className='CarouselFilters']">
+			<block>
+				<bind name="instance" value="'RSP_RandomShipPicker'; {}"/>
+			</block>
+		</insert>
+	</ubBuildBlock>
+
+	<!-- The button. Looks like the filter row's reset button; reports a click upwards as 'rspRoll'. -->
+	<ubBuildBlock name="RSP_PickerButton">
+		<insert into=".">
+			<bind name="controller" value="'lesta.unbound.controls.UbInteractiveController'"/>
+			<bind name="dispatch" value="'click'; 'rspRoll'"/>
+			<bind name="soundSet" value="'default_button'"/>
+			<bind name="transition" value="_rspEnabled; 0.15; {alpha: 0.4}; {alpha: 1}"/>
+			<style>
+				<height value="30px"/>
+				<marginRight value="4px"/>
+			</style>
+			<block className="button_dock_bg" type="native">
+				<bind name="gotoAndStop!" value="'down'"/>
+				<bind name="transition" value="rollOver || mouseDown; 0.15; {alpha: 0.6}; {alpha: 1}"/>
+				<style>
+					<height value="100%"/>
+				</style>
+				<block>
+					<style>
+						<height value="100%"/>
+						<marginLeft value="10px"/>
+						<marginRight value="10px"/>
+					</style>
+					<block type="text">
+						<style>
+							<marginTop value="4px"/>
+						</style>
+						<styleClass value="$TextHeaderBigDefault"/>
+						<bind name="text" value="'IDS_RNG_DOGTAG'"/>
+					</block>
+				</block>
+			</block>
+		</insert>
+	</ubBuildBlock>
+
+	<ubBuildBlock name="RSP_RandomShipPicker">
+		<insert into=".">
+			<!-- The carousel's lists: every own ship, and the ones matching the filters. -->
+			<bind name="collectionDH" value="CC.carouselFilter; 'rspSorted'; 'sorted'"/>
+			<bind name="collectionDH" value="CC.carouselFilter; 'rspFiltered'; 'filtered.sorted'"/>
+
+			<!-- Display mode: filtered-out ships hidden, or only dimmed. -->
+			<bind name="collectionDH" value="CC.userPrefs; 'rspPrefsCol'"/>
+			<bind name="entityDH" value="'rspPrefsEnt'; rspPrefsCol[0].id"/>
+			<bind name="watchDH" value="'rspPrefs'; ['rspPrefsEnt.userPrefs.evUserPrefsChanged']; rspPrefsEnt.userPrefs.userPrefs"/>
+			<bind name="watch" value="'rspHidden'; rspPrefs.isFilteredShipsHided == true"/>
+
+			<!--
+				How many ships match. Hidden: the length of 'filtered.sorted'.
+				Dimmed: the index of the first non-matching ship in 'sorted', or all
+				of 'sorted' when every ship matches.
+			-->
+			<bind name="contains" value="rspSorted ? rspSorted : []; !$item.carouselFilter.isFiltered; 'rspFirstOut'; true"/>
+			<bind name="watch" value="'rspDimN'; rspFirstOut &gt;= 0 ? rspFirstOut : (rspSorted ? rspSorted.length : 0)"/>
+			<bind name="watch" value="'rspN'; rspHidden ? (rspFiltered ? rspFiltered.length : 0) : rspDimN"/>
+
+			<!-- The selected ship. -->
+			<bind name="firstEntityDH" value="'rspDock'; CC.dockDataMarker"/>
+			<bind name="watchDH" value="'rspCurId'; ['rspDock.shipSelection.evShipUpdate']; rspDock.shipSelection.currentShipId"/>
+
+			<!--
+				rspBusy:    from a draw until the setting is put back; clicks are ignored meanwhile.
+				rspWaiting: the drawn ship is being selected and the carousel has not been told yet.
+			-->
+			<bind name="var" value="{rspIdx: -1, rspGo: false, rspPickId: 0, rspBusy: false, rspWaiting: false, rspOrigHidden: false}"/>
+
+			<!-- Draw an index, then resolve it to a ship in the list the carousel is showing. -->
+			<bind name="catch" value="'rspRoll'; {rspIdx: !rspBusy &amp;&amp; rspN &gt; 0 ? math.randomfloor(rspN) : -1}; 'rspRolled'"/>
+			<bind name="catch" value="'rspRolled'; {
+				rspGo: rspIdx &gt;= 0,
+				rspPickId: rspIdx &lt; 0 ? rspPickId : (rspHidden ? rspFiltered[rspIdx].ship.id : rspSorted[rspIdx].ship.id),
+				rspBusy: rspBusy || rspIdx &gt;= 0,
+				rspWaiting: rspIdx &gt;= 0 ? true : rspWaiting,
+				rspOrigHidden: rspIdx &gt;= 0 ? rspHidden : rspOrigHidden
+				}; 'rspPicked'"/>
+			<bind name="action" value="'rspPicked'; rspGo ? 'selectShip' : ''; {shipId: rspPickId}"/>
+			<bind name="dispatch" value="'rspPicked'; rspGo ? 'rspArm' : null; null; 2"/>
+
+			<!--
+				Once the selection has landed, scroll. Drawing the ship that is
+				already selected changes nothing to wait for, so scroll straight away.
+			-->
+			<bind name="changeDispatch" value="rspCurId; 'rspLanded'; {}; 2; rspWaiting ? rspPickId : -1"/>
+			<bind name="dispatch" value="'rspArm'; rspWaiting &amp;&amp; rspPickId == rspCurId ? 'rspLanded' : null; null; 2"/>
+			<bind name="catch" value="'rspLanded'; {rspWaiting: false}"/>
+			<bind name="dispatch" value="'rspLanded'; 'rspFlip'; null; 2; 0.1"/>
+
+			<!-- Scroll: flip the hidden/dimmed setting, then put the user's value back. -->
+			<bind name="action" value="'rspFlip'; rspPrefs != null ? 'setUserPref' : ''; {value: !rspOrigHidden, name: 'isFilteredShipsHided'}"/>
+			<bind name="dispatch" value="'rspFlip'; 'rspFlipBack'; null; 2; 0.15"/>
+			<bind name="action" value="'rspFlipBack'; rspPrefs != null ? 'setUserPref' : ''; {value: rspOrigHidden, name: 'isFilteredShipsHided'}"/>
+			<bind name="catch" value="'rspFlipBack'; {rspBusy: false}"/>
+
+			<!-- If the selection never lands, release the button after 3 s without touching the setting. -->
+			<bind name="dispatchDelayReset" value="'rspArm'; 'rspTimeout'; null; 2; 3"/>
+			<bind name="catch" value="'rspTimeout'; {rspBusy: rspWaiting ? false : rspBusy, rspWaiting: false}"/>
+
+			<style>
+				<height value="30px"/>
+				<flow value="horizontal"/>
+			</style>
+			<block>
+				<bind name="instance" value="'RSP_PickerButton'; {_rspEnabled: rspN &gt; 0}"/>
+			</block>
+		</insert>
+	</ubBuildBlock>
+</mod>

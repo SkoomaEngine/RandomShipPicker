@@ -1,0 +1,233 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  RSP_Probe 0.2.0 - throwaway diagnostic for the Random Ship Picker project.
+
+  Round 1 showed that the game's 'filtered.sorted' list is only kept up to date
+  while filtered-out ships are hidden, and that selectShip does not scroll the
+  carousel. Round 2 tests two live replacements for that list (ROLL, ROLL2) and
+  five ways to make the carousel scroll to the selected ship (S1-S5).
+
+  Clicking "RSP" builds the probe core, so nothing under test runs unless asked.
+  Remove this file from res_mods/ForgeBlueprints/ when testing is done;
+  ModForge restores the vanilla panel on the next start.
+-->
+<mod name="RSP_Probe" version="0.2.0">
+	<requires installer=">=1.0.0"/>
+
+	<ubBuildBlock name="ShipsCarouselPanel">
+		<!-- The port carousel panel renders its own inline copy of the filter row. -->
+		<insert into=".//block[@className='CarouselFilters']">
+			<block>
+				<bind name="instance" value="'RSP_ProbePanel'; {}"/>
+			</block>
+		</insert>
+		<!--
+			S1 bridge. This block holds both the filter row and the carousel: it
+			copies the index our core sends up, then broadcasts the carousel's own
+			scroll event down to it. The zero delay makes the args read the index
+			after the copy.
+		-->
+		<insert into=".//bind[@name='catch'][contains(@value,'carouselHideFilteredChanged')]/.."
+				after="bind[@name='catch'][contains(@value,'carouselRowsCountChanged')]">
+			<bind name="catch" value="'rspScrollReq'"/>
+			<bind name="dispatch" value="'rspScrollReq'; rspScrollIdx &gt;= 0 ? 'evScrollToIndex' : null; {value: rspScrollIdx}; 1; 0"/>
+		</insert>
+	</ubBuildBlock>
+
+	<!-- A button in the style of the filter row. Dispatches _rspEvent upwards on click. -->
+	<ubBuildBlock name="RSP_ProbeButton">
+		<insert into=".">
+			<bind name="controller" value="'lesta.unbound.controls.UbInteractiveController'"/>
+			<bind name="dispatch" value="'click'; _rspEvent"/>
+			<bind name="soundSet" value="'default_button'"/>
+			<style>
+				<height value="30px"/>
+				<marginRight value="4px"/>
+			</style>
+			<block className="button_dock_bg" type="native">
+				<bind name="gotoAndStop!" value="'down'"/>
+				<bind name="transition" value="rollOver || mouseDown; 0.15; {alpha: 0.6}; {alpha: 1}"/>
+				<style>
+					<height value="100%"/>
+				</style>
+				<block>
+					<style>
+						<height value="100%"/>
+						<marginLeft value="10px"/>
+						<marginRight value="10px"/>
+					</style>
+					<block type="text">
+						<style>
+							<marginTop value="4px"/>
+						</style>
+						<styleClass value="$TextHeaderBigDefault"/>
+						<bind name="text" value="_rspText"/>
+					</block>
+				</block>
+			</block>
+		</insert>
+	</ubBuildBlock>
+
+	<!-- Safe part: a toggle that builds the probe core on demand. -->
+	<ubBuildBlock name="RSP_ProbePanel">
+		<insert into=".">
+			<bind name="var" value="{rspActive: false}"/>
+			<bind name="catch" value="'rspToggle'; {rspActive: !rspActive}"/>
+			<style>
+				<height value="30px"/>
+				<flow value="horizontal"/>
+			</style>
+			<block>
+				<bind name="instance" value="'RSP_ProbeButton'; {_rspText: rspActive ? 'RSP on' : 'RSP', _rspEvent: 'rspToggle'}"/>
+			</block>
+			<block>
+				<bind name="instance" value="'RSP_ProbeCore'; rspActive ? {} : null"/>
+			</block>
+		</insert>
+	</ubBuildBlock>
+
+	<!-- Probe core: the lists under test, the draw chains, the scroll tests and the overlay. -->
+	<ubBuildBlock name="RSP_ProbeCore">
+		<insert into=".">
+			<!-- The carousel's lists, as round 1 read them. -->
+			<bind name="collectionDH" value="CC.carouselFilter; 'rspFiltered'; 'filtered.sorted'"/>
+			<bind name="collectionDH" value="CC.carouselFilter; 'rspSorted'; 'sorted'"/>
+			<bind name="watch" value="'rspGameN'; rspFiltered ? rspFiltered.length : -1"/>
+			<bind name="watch" value="'rspAll'; rspSorted ? rspSorted.length : -1"/>
+
+			<!-- Candidate A: our own list, filtered again whenever a ship's filter flag changes. -->
+			<bind name="collectionDesign" value="'DES_rspSorted'; 'rspLive'; {'filter': $entity.carouselFilter.isFiltered}; ['carouselFilter.evUpdate']"/>
+			<bind name="watch" value="'rspLiveN'; rspLive ? rspLive.length : -1"/>
+
+			<!-- Candidate B: in dim mode 'sorted' lists matching ships first, so the first non-matching index is their count. -->
+			<bind name="contains" value="rspSorted ? rspSorted : []; !$item.carouselFilter.isFiltered; 'rspFirstOut'; true"/>
+			<bind name="watch" value="'rspPrefixN'; rspFirstOut &gt;= 0 ? rspFirstOut : rspAll"/>
+
+			<!-- Display mode: filtered-out ships hidden, or only dimmed. -->
+			<bind name="collectionDH" value="CC.userPrefs; 'rspPrefsCol'"/>
+			<bind name="entityDH" value="'rspPrefsEnt'; rspPrefsCol[0].id"/>
+			<bind name="watchDH" value="'rspPrefs'; ['rspPrefsEnt.userPrefs.evUserPrefsChanged']; rspPrefsEnt.userPrefs.userPrefs"/>
+			<bind name="watch" value="'rspHidden'; rspPrefs.isFilteredShipsHided == true"/>
+
+			<!-- Ship-name search of the filter panel, for S3 and S4. -->
+			<bind name="firstEntityDH" value="'rspPanelEnt'; CC.filterPanel"/>
+			<bind name="watchDH" value="'rspSearch'; ['rspPanelEnt.filterPanel.evUpdate']; rspPanelEnt.filterPanel.searchString"/>
+
+			<!-- The selected ship, and its index in the list the carousel shows. -->
+			<bind name="firstEntityDH" value="'rspDock'; CC.dockDataMarker"/>
+			<bind name="watchDH" value="'rspCurId'; ['rspDock.shipSelection.evShipUpdate']; rspDock.shipSelection.currentShipId"/>
+			<bind name="contains" value="rspHidden ? (rspFiltered ? rspFiltered : []) : (rspSorted ? rspSorted : []); $item.ship.id == rspCurId; 'rspCurIdx'; true"/>
+
+			<bind name="var" value="{rspClicks: 0, rspSrc: '-', rspIdx: -1, rspPickId: 0, rspPickMatch: '-',
+				rspLastTest: '-', rspTests: 0,
+				rspBusy2: false, rspS2Ok: false, rspOrigHidden: false,
+				rspBusy3: false, rspS3Ok: false, rspOrigSearch: ''}"/>
+
+			<!-- ROLL draws from candidate A, ROLL2 from candidate B; both then select the ship. -->
+			<bind name="catch" value="'rspRoll'; {rspClicks: rspClicks + 1, rspSrc: 'live',
+				rspIdx: rspLiveN &gt; 0 ? math.randomfloor(rspLiveN) : -1}; 'rspRollA'"/>
+			<bind name="catch" value="'rspRollA'; {
+				rspPickId: rspIdx &gt;= 0 ? rspLive[rspIdx].ship.id : 0,
+				rspPickMatch: rspIdx &gt;= 0 ? rspLive[rspIdx].carouselFilter.isFiltered : '-'
+				}; 'rspPicked'"/>
+			<bind name="catch" value="'rspRoll2'; {rspClicks: rspClicks + 1, rspSrc: 'prefix',
+				rspIdx: rspPrefixN &gt; 0 ? math.randomfloor(rspPrefixN) : -1}; 'rspRollB'"/>
+			<bind name="catch" value="'rspRollB'; {
+				rspPickId: rspIdx &gt;= 0 ? rspSorted[rspIdx].ship.id : 0,
+				rspPickMatch: rspIdx &gt;= 0 ? rspSorted[rspIdx].carouselFilter.isFiltered : '-'
+				}; 'rspPicked'"/>
+			<bind name="action" value="'rspPicked'; rspPickId &gt; 0 ? 'selectShip' : ''; {shipId: rspPickId}"/>
+
+			<!-- S1: ask the panel to broadcast the carousel's scroll event (bridge above). -->
+			<bind name="dispatch" value="'rspS1'; 'rspScrollReq'; {rspScrollIdx: rspCurIdx}; 0"/>
+			<bind name="catch" value="'rspS1'; {rspLastTest: 'S1', rspTests: rspTests + 1}"/>
+
+			<!--
+				S2: switch hidden/dimmed and back, so the game rebuilds the list. The
+				old value is captured before the first switch, and a second click
+				during the 0.15 s window cannot capture the switched value.
+			-->
+			<bind name="catch" value="'rspS2'; {rspLastTest: 'S2', rspTests: rspTests + 1,
+				rspS2Ok: !rspBusy2 &amp;&amp; rspPrefs != null,
+				rspOrigHidden: rspBusy2 ? rspOrigHidden : rspHidden, rspBusy2: true}; 'rspS2Go'"/>
+			<bind name="action" value="'rspS2Go'; rspS2Ok ? 'setUserPref' : ''; {value: !rspOrigHidden, name: 'isFilteredShipsHided'}"/>
+			<bind name="dispatch" value="'rspS2Go'; 'rspS2Back'; null; 2; 0.15"/>
+			<bind name="action" value="'rspS2Back'; rspPrefs != null ? 'setUserPref' : ''; {value: rspOrigHidden, name: 'isFilteredShipsHided'}"/>
+			<bind name="catch" value="'rspS2Back'; {rspBusy2: false}"/>
+
+			<!-- S3: set a ship-name search that matches nothing, then put the old one back. -->
+			<bind name="catch" value="'rspS3'; {rspLastTest: 'S3', rspTests: rspTests + 1,
+				rspS3Ok: !rspBusy3 &amp;&amp; rspSearch != null,
+				rspOrigSearch: rspBusy3 ? rspOrigSearch : rspSearch, rspBusy3: true}; 'rspS3Go'"/>
+			<bind name="action" value="'rspS3Go'; rspS3Ok ? 'setSearchString' : ''; {value: '~~'}"/>
+			<bind name="dispatch" value="'rspS3Go'; 'rspS3Back'; null; 2; 0.15"/>
+			<bind name="action" value="'rspS3Back'; rspOrigSearch != null ? 'setSearchString' : ''; {value: rspOrigSearch}"/>
+			<bind name="catch" value="'rspS3Back'; {rspBusy3: false}"/>
+
+			<!-- S4 / S5: send the current search / display mode again, unchanged. -->
+			<bind name="action" value="'rspS4'; rspSearch != null ? 'setSearchString' : ''; {value: rspSearch}"/>
+			<bind name="catch" value="'rspS4'; {rspLastTest: 'S4', rspTests: rspTests + 1}"/>
+			<bind name="action" value="'rspS5'; rspPrefs != null ? 'setUserPref' : ''; {value: rspHidden, name: 'isFilteredShipsHided'}"/>
+			<bind name="catch" value="'rspS5'; {rspLastTest: 'S5', rspTests: rspTests + 1}"/>
+
+			<!-- Name of the picked ship; outside the chains so a failure here cannot block them. -->
+			<bind name="primaryEntityDH" value="'rspPickEnt'; CC.ship; rspPickId"/>
+			<bind name="watch" value="'rspPickName'; rspPickEnt ? tr(rspPickEnt.ship.nameIDS) : '-'"/>
+
+			<style>
+				<height value="30px"/>
+				<flow value="horizontal"/>
+			</style>
+
+			<block>
+				<style>
+					<flow value="horizontal"/>
+				</style>
+				<bind name="instance" value="'RSP_ProbeButton'; {_rspText: 'ROLL', _rspEvent: 'rspRoll'}"/>
+				<bind name="instance" value="'RSP_ProbeButton'; {_rspText: 'ROLL2', _rspEvent: 'rspRoll2'}"/>
+				<bind name="instance" value="'RSP_ProbeButton'; {_rspText: 'S1', _rspEvent: 'rspS1'}"/>
+				<bind name="instance" value="'RSP_ProbeButton'; {_rspText: 'S2', _rspEvent: 'rspS2'}"/>
+				<bind name="instance" value="'RSP_ProbeButton'; {_rspText: 'S3', _rspEvent: 'rspS3'}"/>
+				<bind name="instance" value="'RSP_ProbeButton'; {_rspText: 'S4', _rspEvent: 'rspS4'}"/>
+				<bind name="instance" value="'RSP_ProbeButton'; {_rspText: 'S5', _rspEvent: 'rspS5'}"/>
+			</block>
+
+			<!-- Debug overlay above the filter row; ignores the mouse. -->
+			<block>
+				<style>
+					<position value="absolute"/>
+					<left value="0px"/>
+					<bottom value="36px"/>
+					<padding value="6px"/>
+					<flow value="vertical"/>
+					<backgroundColor value="0xCC000000"/>
+					<hitTest value="false"/>
+				</style>
+				<block type="text">
+					<styleClass value="$TextDefaultBoldNM"/>
+					<bind name="text" value="'RSP probe 0.2.0   hidden=' + rspHidden + '   sorted=' + rspAll"/>
+				</block>
+				<block type="text">
+					<styleClass value="$TextDefaultBoldNM"/>
+					<bind name="text" value="'game=' + rspGameN + '   live=' + rspLiveN + '   prefix=' + rspPrefixN"/>
+				</block>
+				<block type="text">
+					<styleClass value="$TextDefaultBoldNM"/>
+					<bind name="text" value="'ROLL x' + rspClicks + '   src=' + rspSrc + '   idx=' + rspIdx + '   match=' + rspPickMatch"/>
+				</block>
+				<block type="text">
+					<styleClass value="$TextDefaultBoldNM"/>
+					<bind name="text" value="'pick ' + rspPickId + '  ' + rspPickName"/>
+				</block>
+				<block type="text">
+					<styleClass value="$TextDefaultBoldNM"/>
+					<bind name="text" value="'current ' + rspCurId + '   carouselIdx=' + rspCurIdx"/>
+				</block>
+				<block type="text">
+					<styleClass value="$TextDefaultBoldNM"/>
+					<bind name="text" value="'test ' + rspLastTest + ' x' + rspTests + '   search=[' + rspSearch + ']'"/>
+				</block>
+			</block>
+		</insert>
+	</ubBuildBlock>
+</mod>

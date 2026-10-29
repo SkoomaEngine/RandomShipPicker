@@ -1,0 +1,12 @@
+# Private working notes; kept locally only
+docs/notes.md
+
+# Build output; releases are attached to GitHub Releases instead
+dist/
+
+# Local tool settings
+.claude/
+
+# Python
+__pycache__/
+*.pyc
