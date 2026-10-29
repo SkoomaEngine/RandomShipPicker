@@ -56,12 +56,17 @@ def main():
             sys.exit('forge_check refused the blueprint; nothing packaged')
 
     os.makedirs(DIST, exist_ok=True)
-    out = os.path.join(DIST, 'RandomShipPicker-%s.zip' % version)
-    with zipfile.ZipFile(out, 'w', zipfile.ZIP_DEFLATED) as zf:
-        for path, arc in list(files_under(RES_MODS, 'res_mods')) + list(files_under(RELEASE, '')):
-            zf.write(path, arc)
-            print('  %s' % arc)
-    print('wrote %s' % out)
+    mod_files = list(files_under(RES_MODS, 'res_mods'))
+    # The full release, and a res_mods-only copy for installers that extract
+    # an archive straight into bin/<build>/, such as Aslain's custom mods.
+    for name, entries in (('RandomShipPicker-%s.zip', mod_files + list(files_under(RELEASE, ''))),
+                          ('RandomShipPicker-%s-res_mods-only.zip', mod_files)):
+        out = os.path.join(DIST, name % version)
+        with zipfile.ZipFile(out, 'w', zipfile.ZIP_DEFLATED) as zf:
+            for path, arc in entries:
+                zf.write(path, arc)
+                print('  %s' % arc)
+        print('wrote %s' % out)
 
 
 if __name__ == '__main__':

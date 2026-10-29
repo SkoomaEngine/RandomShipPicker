@@ -27,7 +27,7 @@
 | `tools/forge_check.py` | 离线运行游戏里安装的 ModForge，对蓝图做合并、检查和编译，结论与 ModForge 在游戏启动时相同 |
 | `tools/deploy.py` | 把 `mod/res_mods/` 复制进游戏；`--remove` 撤回，`--dry-run` 只预览 |
 | `tools/checklog.py` | 从 `profile/python.log` 摘出本 mod 的 ModForge 记录、运行汇总和 AS3 报错 |
-| `tools/package.py` | 打发布包 `dist/RandomShipPicker-<版本>.zip`：先跑 `forge_check`，并核对 CHANGELOG 里有当前版本 |
+| `tools/package.py` | 打发布包 `dist/RandomShipPicker-<版本>.zip`，另出一个只含 `res_mods` 的 `-res_mods-only` 包供 Aslain 自定义 mod 使用：先跑 `forge_check`，并核对 CHANGELOG 里有当前版本 |
 | `docs/v1-test.md` | 1.0.0 的实机测试步骤 |
 | `probe/` | 开发期间用来实测船坞行为的诊断探针及其测试说明。已退役，工具不会部署它 |
 

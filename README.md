@@ -27,7 +27,7 @@ In short:
 | `tools/forge_check.py` | Runs the game's installed ModForge offline over the blueprints: merge, lint and compile, with the same verdict ModForge gives at client start |
 | `tools/deploy.py` | Copies `mod/res_mods/` into the game. `--remove` takes it back out, `--dry-run` only previews |
 | `tools/checklog.py` | Summarises `profile/python.log`: this mod's ModForge lines, the run summary and AS3 errors |
-| `tools/package.py` | Builds `dist/RandomShipPicker-<version>.zip` after running `forge_check` and checking that the CHANGELOG has the version |
+| `tools/package.py` | Builds `dist/RandomShipPicker-<version>.zip`, plus a `-res_mods-only` zip for Aslain's custom mods, after running `forge_check` and checking that the CHANGELOG has the version |
 | `docs/v1-test.md` | In-game test steps for 1.0.0 (Chinese) |
 | `probe/` | The diagnostic probe used during development to measure how the carousel behaves, and its test notes (Chinese). Retired; never deployed by the tools |
 
